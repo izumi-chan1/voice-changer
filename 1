@@ -1,0 +1,178 @@
+index.html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简单变声器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f0f4ff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        button {
+            background: #4a6cf7;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 16px;
+            margin: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:hover {
+            background: #3b5de7;
+        }
+        button:disabled {
+            background: #aaa;
+            cursor: not-allowed;
+        }
+        .pitch-control {
+            margin: 20px 0;
+        }
+        input[type=range] {
+            width: 80%;
+            margin-top: 10px;
+        }
+        #status {
+            color: #666;
+            margin: 10px 0;
+            min-height: 24px;
+        }
+        .icon {
+            font-size: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🎤</div>
+        <h1>简单变声器</h1>
+        <p>录一段声音，然后调音调播放</p>
+        
+        <button id="recordBtn">开始录音</button>
+        <button id="playBtn" disabled>播放变声</button>
+        
+        <div class="pitch-control">
+            <label for="pitchRange">音调调节：<span id="pitchValue">1.0</span>x</label>
+            <br>
+            <input type="range" id="pitchRange" min="0.5" max="2.0" value="1.0" step="0.1">
+            <div style="display: flex; justify-content: space-between; width: 80%; margin: 0 auto; font-size: 0.8rem; color: #888;">
+                <span>低沉</span><span>正常</span><span>尖锐</span>
+            </div>
+        </div>
+        
+        <p id="status">点击按钮开始</p>
+    </div>
+
+    <script>
+        // 获取页面元素
+        const recordBtn = document.getElementById('recordBtn');
+        const playBtn = document.getElementById('playBtn');
+        const pitchRange = document.getElementById('pitchRange');
+        const pitchValue = document.getElementById('pitchValue');
+        const status = document.getElementById('status');
+
+        let mediaRecorder;       // 录音器
+        let audioChunks = [];    // 存储录音数据
+        let isRecording = false; // 是否正在录音
+        let audioContext;        // 音频处理上下文
+
+        // 更新滑块的显示数值
+        pitchRange.addEventListener('input', () => {
+            pitchValue.textContent = parseFloat(pitchRange.value).toFixed(1);
+        });
+
+        // 录音按钮点击
+        recordBtn.addEventListener('click', async () => {
+            if (isRecording) {
+                // 如果正在录音，就停止
+                mediaRecorder.stop();
+                recordBtn.textContent = '开始录音';
+                status.textContent = '录音完成，可以播放变声';
+                isRecording = false;
+                playBtn.disabled = false;
+                return;
+            }
+
+            // 开始录音
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    // 停止所有麦克风轨道
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                mediaRecorder.start();
+                recordBtn.textContent = '停止录音';
+                status.textContent = '正在录音...';
+                isRecording = true;
+                playBtn.disabled = true;
+            } catch (err) {
+                alert('无法获取麦克风权限，请检查浏览器设置并允许使用麦克风。');
+                console.error(err);
+            }
+        });
+
+        // 播放变声按钮
+        playBtn.addEventListener('click', async () => {
+            if (audioChunks.length === 0) {
+                alert('还没有录音，请先录音');
+                return;
+            }
+
+            // 将录音数据转为音频文件
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const arrayBuffer = await audioBlob.arrayBuffer();
+
+            // 创建音频上下文（如果还没创建）
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            try {
+                // 解码音频
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                // 创建播放源
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                // 关键：通过 playbackRate 改变音调
+                source.playbackRate.value = parseFloat(pitchRange.value);
+                source.connect(audioContext.destination);
+                source.start(0);
+                
+                status.textContent = '正在播放变声...';
+                source.onended = () => {
+                    status.textContent = '播放结束';
+                };
+            } catch (e) {
+                alert('音频处理出错，请重试');
+                console.error(e);
+            }
+        });
+    </script>
+</body>
+</html>
